@@ -6,8 +6,6 @@ authors = ["Zenith <z@zenith.dev>"]
 
 [tool.poetry.dependencies]
 python = "~3.9"
-"discord.py" = "^1.7.1"
-"discord.py-stubs" = "^1.7.1"
 beautifulsoup4 = "^4.9.3"
 aurflux = "^3.3.19"
 pendulum = "^2.1.2"
