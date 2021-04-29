@@ -1,0 +1,4 @@
+aurflux==3.*,>=3.3.19
+beautifulsoup4==4.*,>=4.9.3
+mypy==0.*,>=0.812.0
+pendulum==2.*,>=2.1.2
