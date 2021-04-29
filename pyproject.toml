@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "unearthedarcanabot"
+version = "0.1.0"
+description = ""
+authors = ["Zenith <z@zenith.dev>"]
+
+[tool.poetry.dependencies]
+python = "~3.9"
+"discord.py" = "^1.7.1"
+"discord.py-stubs" = "^1.7.1"
+beautifulsoup4 = "^4.9.3"
+aurflux = "^3.3.19"
+pendulum = "^2.1.2"
+
+[tool.poetry.dev-dependencies]
+mypy = "^0.812"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
