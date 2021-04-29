@@ -52,7 +52,6 @@ class Scraper(aurflux.FluxCog):
             for guild in self.flux.guilds:
                gctx = aurflux.context.ManualGuildCtx(flux=self.flux, guild=guild)
                gcfg = self.flux.CONFIG.of(gctx)
-
                if not gcfg["last_post"] or pendulum.parse(gcfg["last_post"]) < dt:
                   async with self.flux.CONFIG.writeable_conf(gctx) as cfg:
                      cfg["last_post"] = dt.isoformat()
@@ -115,7 +114,7 @@ class Scraper(aurflux.FluxCog):
 class UABot(aurcore.AurCore):
    def __init__(self):
       super(UABot, self).__init__(name="uabot")
-      self.flux = aurflux.FluxClient(self.__class__.__name__, admin_id=TOKENS.ADMIN_ID, parent_router=self.router, intents=discord.Intents.all(), host=self)
+      self.flux = aurflux.FluxClient(self.__class__.__name__, admin_id=TOKENS.ADMIN_ID, parent_router=self.router, host=self)
 
    async def startup(self, token: str):
       await self.flux.startup(token)
