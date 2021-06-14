@@ -52,7 +52,7 @@ pyyaml = ">=5.3.1,<6.0.0"
 
 [[package]]
 name = "aurflux"
-version = "3.5.2"
+version = "3.5.5"
 description = "Aurflux!"
 category = "main"
 optional = false
@@ -374,8 +374,8 @@ aurcore = [
     {file = "aurcore-1.2.14.tar.gz", hash = "sha256:dc6da41179d4e929e55a2f56bdbc88fd27add389256f110313b0c0fc244c6ca2"},
 ]
 aurflux = [
-    {file = "aurflux-3.5.2-py3-none-any.whl", hash = "sha256:a03a6f128d005787425e06805d2fa456f707938892c441eb0c75848479631d7a"},
-    {file = "aurflux-3.5.2.tar.gz", hash = "sha256:38f7ba5e10cfa476b339e2727925d41bf48f89a1793e04a825de86a57a71d969"},
+    {file = "aurflux-3.5.5-py3-none-any.whl", hash = "sha256:004b9f2def1ce67a271f4a651863daee817a7d78bbc05fb578f103febb3d0266"},
+    {file = "aurflux-3.5.5.tar.gz", hash = "sha256:543d5025032838062d0ef1aa2caf1c13db395c3a045689252c6e813b698a1d13"},
 ]
 beautifulsoup4 = [
     {file = "beautifulsoup4-4.9.3-py2-none-any.whl", hash = "sha256:4c98143716ef1cb40bf7f39a8e3eec8f8b009509e74904ba3a7b315431577e35"},

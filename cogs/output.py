@@ -16,7 +16,7 @@ from loguru import logger
 
 aurcore.log.setup()
 UA_URL = "https://dnd.wizards.com/articles/unearthed-arcana"
-ARTICLE_SEP = "⸱"
+ARTICLE_SEP = "\n⸱\n"
 MESSAGE_LENGTH_THRES = 1900
 
 
@@ -150,13 +150,13 @@ class Output(aurflux.FluxCog):
             for guild in self.flux.guilds:
                gctx = aurflux.context.ManualGuildCtx(flux=self.flux, guild=guild)
                gcfg = self.flux.CONFIG.of(gctx)
+
                if not (last_post := await self.cfg_get(gcfg, ["ua","last_post"])) or pendulum.parse(last_post) < dt:
 
-                  news_channel_raw = await self.cfg_get(gcfg, [article["type"], "news_channel"])
-                  print(news_channel_raw)
+                  news_channel_raw  = str(await self.cfg_get(gcfg, [article["type"], "news_channel"]))
                   if not news_channel_raw:
-                     logger.error(f"Did not recognize article type: {article['type']} for article:\n{article}")
-                     raise ValueError
+                     continue
+
                   # News - Announcements
                   news_channel: discord.TextChannel = await gctx.find_in_guild(
                      "channel",
@@ -177,8 +177,8 @@ class Output(aurflux.FluxCog):
 
                   # Discuss
 
-                  discuss_channel: discord.TextChannel = await gctx.find_in_guild("channel", await self.cfg_get(gcfg, ["ua", "discuss_channel"]))
-
+                  discuss_channel: discord.TextChannel = await gctx.find_in_guild("channel", str(await self.cfg_get(gcfg, ["ua", "discuss_channel"])))
+                  discuss_message = None
                   article_text = f"**__[{article['type'].upper()}]__**\n{article['title']}\n{article['link']}\n{article['summary']}\n"
                   try:
                      # New Message
@@ -203,7 +203,10 @@ class Output(aurflux.FluxCog):
 
                   # logger.success(f"Sending message in discuss channel:")
                   # logger.success(content)
+                  if discuss_message:
+                     await discuss_message.unpin(reason=f"Automatic unpin for updated {article['type']}")
                   m: discord.Message = await discuss_channel.send(content=content)
                   await m.pin(reason=f"Automatic pin for updated {article['type']}")
+
                   await self.cfg_set(gctx, [article["type"], "discuss_message"], m.id)
                   await self.cfg_set(gctx, ["ua","last_post"], dt.isoformat())
