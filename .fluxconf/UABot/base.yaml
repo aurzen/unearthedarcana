@@ -1,6 +1,32 @@
 admin_id: 129706966460137472
 auths: {}
 prefix: ..
-target: null
-last_post: '2021-04-28T00:00:00+00:00'
-role: null
+output:
+  __meta: "Handles scraper"
+  type: "cog"
+  ua:
+    __meta: "Unearthed Aracana Post Config"
+    type: "category"
+    last_post:
+      __meta: "AUTO value storing last seen UA Post"
+      type: "datetime"
+      value: '2021-04-28T00:00:00+00:00'
+    news_channel:
+      __meta: "Output news embed"
+      type: "channel"
+      value: null
+    discuss_channel:
+      __meta: "Output message & pins"
+      type: "channel"
+      value: null
+    discuss_message:
+      __meta: "Discussion channel last pinned message"
+      type: "message"
+      value: null
+    role:
+      __meta: "Role to ping for discussion messages"
+      type: "role"
+      value: null
+builtins:
+  __meta: "Handles built-in functions"
+  type: "cog"

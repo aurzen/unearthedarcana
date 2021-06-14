@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "unearthedarcanabot"
-version = "0.1.1"
+version = "0.1.2"
 description = ""
 authors = ["Zenith <z@zenith.dev>"]
 
@@ -16,3 +16,6 @@ mypy = "^0.812"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tools.yapf]
+COLUMN_LIMIT = 180
