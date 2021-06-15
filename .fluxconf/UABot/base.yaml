@@ -5,12 +5,12 @@ output:
   __meta: "Handles scraper"
   type: "cog"
   ua:
-    __meta: "Unearthed Aracana Post Config"
+    __meta: "Unearthed Arcana Post Config"
     type: "category"
     last_post:
       __meta: "AUTO value storing last seen UA Post"
       type: "datetime"
-      value: '2021-04-28T00:00:00+00:00'
+      value: '2021-06-14T00:00:00+00:00'
     news_channel:
       __meta: "Output news embed"
       type: "channel"
@@ -19,8 +19,39 @@ output:
       __meta: "Output message & pins"
       type: "channel"
       value: null
-    discuss_message:
+    discuss_message_old:
       __meta: "Discussion channel last pinned message"
+      type: "message"
+      value: null
+    discuss_message_current:
+      __meta: "Discussion channel current pinned message"
+      type: "message"
+      value: null
+    role:
+      __meta: "Role to ping for discussion messages"
+      type: "role"
+      value: null
+  sac:
+    __meta: "Sage Advice Compendium Post Config"
+    type: "category"
+    last_post:
+      __meta: "AUTO value storing last seen SAC Post"
+      type: "datetime"
+      value: '2021-06-14T00:00:00+00:00'
+    news_channel:
+      __meta: "Output news embed"
+      type: "channel"
+      value: null
+    discuss_channel:
+      __meta: "Output message & pins"
+      type: "channel"
+      value: null
+    discuss_message_old:
+      __meta: "Discussion channel last pinned message"
+      type: "message"
+      value: null
+    discuss_message_current:
+      __meta: "Discussion channel current pinned message"
       type: "message"
       value: null
     role:

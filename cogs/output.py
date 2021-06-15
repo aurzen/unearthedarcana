@@ -15,7 +15,12 @@ import aurflux.auth
 from loguru import logger
 
 aurcore.log.setup()
-UA_URL = "https://dnd.wizards.com/articles/unearthed-arcana"
+
+ARTICLE_FEEDS = {
+   "ua" : "https://dnd.wizards.com/articles/unearthed-arcana",
+   "sac": "https://dnd.wizards.com/articles/sage-advice"
+}
+
 ARTICLE_SEP = "\n⸱\n"
 MESSAGE_LENGTH_THRES = 1900
 
@@ -26,14 +31,16 @@ class ArticleInfo(ty.TypedDict):
    summary: str
    link: str
    type: str
+   pdf_links: ty.List[str]
 
 
-class UAScraper:
-   def __init__(self):
-      pass
+class ArticleScraper:
+   def __init__(self, url: str, type_: str):
+      self.url = url
+      self.type_ = type_
 
    async def load(self):
-      async with aiohttp.request('GET', UA_URL) as resp:
+      async with aiohttp.request('GET', self.url) as resp:
          assert resp.status == 200
          t = await resp.text()
          return t
@@ -49,24 +56,33 @@ class UAScraper:
          title = article.find_next(name="h4").text.strip()
          category = article.find_next(class_="category").text.strip()
          summary = article.find_next(class_="summary").text.strip()
+         link = "https://dnd.wizards.com" + str(link["href"])
+
+         async with aiohttp.request('GET', link) as resp:
+            assert resp.status == 200
+            subpage_text = await resp.text()
+            page = bs4.BeautifulSoup(subpage_text, features="html.parser")
+            summary = page.find("div",class_="main-content article").findChild("p", recursive=False).text
+
+            pdf_links = list(set(re.findall("https:\/\/media\.wizards\.com.*?\.pdf", subpage_text)))
 
          links.append({
-            "title"   : title,
-            "category": re.sub("(\\s)\\s+", "\\1", category),
-            "summary" : summary,
-            "link"    : "https://dnd.wizards.com" + str(link["href"]),
-            "type"    : "ua"
+            "title"    : title,
+            "category" : re.sub("(\\s)\\s+", "\\1", category),
+            "summary"  : summary,
+            "link"     : link,
+            "pdf_links": pdf_links,
+            "type"     : self.type_
          })
-
       return links
 
 
 class ScrapeEventer:
-   def __init__(self, parent_router: aurcore.EventRouterHost, interval: float):
+   def __init__(self, parent_router: aurcore.EventRouterHost, url: str, type_: str, interval: float):
       self.router = aurcore.EventRouter(name="scraper", host=parent_router)
       self.seen: ty.Set[str] = set()
       self.interval = interval
-      self.scraper = UAScraper()
+      self.scraper = ArticleScraper(url, type_=type_)
 
    async def generate(self):
       while True:
@@ -87,8 +103,8 @@ class Output(aurflux.FluxCog):
 
       while not self.flux.is_ready():
          await asyncio.sleep(1)
-      self.scraper = ScrapeEventer(parent_router=self.flux.router.host, interval=60 * 60)
-      self.scraper.startup()
+      self.scrapers = [ScrapeEventer(parent_router=self.flux.router.host, interval=60 * 60, url=url, type_=type_) for type_, url in ARTICLE_FEEDS.items()]
+      [s.startup() for s in self.scrapers]
       self.lock = asyncio.Lock()
 
    def load(self) -> None:
@@ -126,37 +142,49 @@ class Output(aurflux.FluxCog):
          """
          dummy = pendulum.now().format("MM/DD/YYYY")
          await self.router.submit(
-            aurcore.Event("scraper:article", ArticleInfo(title=f"Title {dummy}", category=f"Category {dummy}", summary=f"Summary {dummy}", link=f"http://google.com", type=type_))
+            aurcore.Event("scraper:article",
+                          ArticleInfo(title=f"Title {dummy}", category=f"Category {dummy}", summary=f"Summary {dummy}", link=f"http://google.com", pdf_links='https://media.wizards.com/2021/dnd/downloads/TEST.pdf',
+                                      type=type_))
          )
          return Response()
 
       @self.flux.router.listen_for("scraper:article")
       async def article_handler(ev: aurcore.Event):
-         article: ArticleInfo = ev.args[0]
-
-         article_date: ty.Match[str] = re.search(r"\d\d/\d\d/\d\d\d\d", article["category"])
-         if not article_date:
-            await self.flux.debug_message(f"Could not parse article date ```{article_date}``` from article ```{article}```")
-
-         dt = pendulum.from_format(article_date.group(0), "MM/DD/YYYY")
-
-         embed = discord.Embed(
-            title=f"UA {article['title']}",
-            description=article['category'],
-            color=discord.Color.blue() if article['title'].startswith("Survey") else discord.Color.purple()
-         )
-         embed.add_field(name="Summary", value=article['summary'] + f"\n\n[{article['link']}]({article['link']})")
          async with self.lock:
+
+            article: ArticleInfo = ev.args[0]
+            logger.info(f"Handling Article: {article['title']}")
+            article_date: ty.Match[str] = re.search(r"\d\d/\d\d/\d\d\d\d", article["category"])
+            if not article_date:
+               await self.flux.debug_message(f"Could not parse article date ```{article_date}``` from article ```{article}```")
+
+            dt = pendulum.from_format(article_date.group(0), "MM/DD/YYYY")
+
+            pdf_title_reg = re.compile(r"https:\/\/.*?\.wizards\.com.*?/([^\/]*?)$")
+
+            try:
+               link_hrefs = "\n".join([f"[{re.search(pdf_title_reg, l).group(1)}]({l})" for l in article['pdf_links']])
+            except IndexError:
+               link_hrefs = ""
+
+            embed = discord.Embed(
+               title=f"{'📋  New ' if 'survey' in article['title'].lower() else '🔥  New UA: '}{article['title']}",
+               description=article['summary'] + f"\n\n[{article['link']}]({article['link']})\n{link_hrefs}",
+               color=discord.Color(0x818689) if article['title'].startswith("Survey") else discord.Color(0xD41E3C)
+            )
+
+            embed.timestamp = pendulum.now()
+
+
             for guild in self.flux.guilds:
                gctx = aurflux.context.ManualGuildCtx(flux=self.flux, guild=guild)
                gcfg = self.flux.CONFIG.of(gctx)
 
-               if not (last_post := await self.cfg_get(gcfg, ["ua","last_post"])) or pendulum.parse(last_post) < dt:
+               if not (last_post := await self.cfg_get(gcfg, [article["type"], "last_post"])) or pendulum.parse(last_post) < dt:
 
-                  news_channel_raw  = str(await self.cfg_get(gcfg, [article["type"], "news_channel"]))
+                  news_channel_raw = await self.cfg_get(gcfg, [article["type"], "news_channel"])
                   if not news_channel_raw:
                      continue
-
                   # News - Announcements
                   news_channel: discord.TextChannel = await gctx.find_in_guild(
                      "channel",
@@ -164,49 +192,48 @@ class Output(aurflux.FluxCog):
                   )
                   logger.success(f"Sending message in news channel:")
                   logger.success(embed.to_dict())
-
                   await news_channel.send(
                      embed=embed,
-                     content=
-                     (await gctx.find_in_guild(
-                        "role",
-                        await self.cfg_get(gcfg, [article["type"], "role"]))
-                      ).mention
-                     if "role" in gcfg else None
+
                   )
+                  await news_channel.send((f'<@&{r}> ' if (r := await self.cfg_get(gcfg, [article["type"], "role"])) else None) + (f'Head to <#{await self.cfg_get(gcfg, [article["type"], "discuss_channel"])}> to discuss\nIf you\'d like to be notified of future playtest content and related surveys, head to <#416449297886740490> and type `?rank UA`'))
 
                   # Discuss
 
-                  discuss_channel: discord.TextChannel = await gctx.find_in_guild("channel", str(await self.cfg_get(gcfg, ["ua", "discuss_channel"])))
+                  discuss_channel: discord.TextChannel = await gctx.find_in_guild("channel", str(await self.cfg_get(gcfg, [article["type"], "discuss_channel"])))
                   discuss_message = None
-                  article_text = f"**__[{article['type'].upper()}]__**\n{article['title']}\n{article['link']}\n{article['summary']}\n"
+                  article_pdf_links = "\n".join(article['pdf_links'])
+
                   try:
-                     # New Message
-                     if ((discuss_message_id := int(await self.cfg_get(gcfg, [article["type"], "discuss_message"]) or 0)) and
-                           (discuss_message := await discuss_channel.fetch_message(discuss_message_id))
+                     if ((discuss_message_old_id := int(await self.cfg_get(gcfg, [article["type"], "discuss_message_old"]) or 0)) and
+                           (discuss_message_old := await discuss_channel.fetch_message(discuss_message_old_id))
                      ):
+                        print(f"Found old id: {discuss_message_old_id}")
+                        await discuss_message_old.unpin(reason=f"Automatic unpin for updated {article['type']}")
+                  except discord.errors.NotFound:
+                     pass
+                  try:
+                     if ((discuss_message_curr_id := int(await self.cfg_get(gcfg, [article["type"], "discuss_message_current"]) or 0)) and
+                           (discuss_message_curr := await discuss_channel.fetch_message(discuss_message_curr_id))
+                     ):
+                        curr_embed = discuss_message_curr.embeds[0]
+                        if curr_embed.title.startswith("🔥  New"):
+                           curr_embed.title = "🐢 Old" + curr_embed.title.removeprefix("🔥  New")
+                           curr_embed.color = discord.Color(0x6E8A3D)
+                           await discuss_message_curr.edit(embed=curr_embed)
 
-                        article_blocks: ty.List[str] = discuss_message.content.split(ARTICLE_SEP) + [article_text]
-
-                        # Remove oldest block until message length is OK
-                        if len(discuss_message.content) + (article_text_len := len(article_text)) > MESSAGE_LENGTH_THRES:
-                           article_lengths = [len(ab) for ab in article_blocks] + [article_text_len]
-                           while sum(article_lengths) > MESSAGE_LENGTH_THRES:
-                              article_blocks.pop(0)
-                              article_lengths.pop(0)
-                        content: str = ARTICLE_SEP.join(article_blocks)
-                     else:
-                        content = article_text
-                  except discord.errors.NotFound as e:
-                     content = article_text
-
+                  except discord.errors.NotFound:
+                     pass
 
                   # logger.success(f"Sending message in discuss channel:")
                   # logger.success(content)
                   if discuss_message:
                      await discuss_message.unpin(reason=f"Automatic unpin for updated {article['type']}")
-                  m: discord.Message = await discuss_channel.send(content=content)
+
+                  m: discord.Message = await discuss_channel.send(embed=embed)
+
                   await m.pin(reason=f"Automatic pin for updated {article['type']}")
 
-                  await self.cfg_set(gctx, [article["type"], "discuss_message"], m.id)
-                  await self.cfg_set(gctx, ["ua","last_post"], dt.isoformat())
+                  await self.cfg_set(gctx, [article["type"], "discuss_message_old"], discuss_message_curr_id or None)
+                  await self.cfg_set(gctx, [article["type"], "discuss_message_current"], m.id)
+                  await self.cfg_set(gctx, [article["type"], "last_post"], dt.isoformat())
