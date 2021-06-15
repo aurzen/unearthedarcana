@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "unearthedarcanabot"
-version = "0.1.5"
+version = "0.1.6"
 description = ""
 authors = ["Zenith <z@zenith.dev>"]
 

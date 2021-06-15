@@ -163,7 +163,7 @@ class Output(aurflux.FluxCog):
             pdf_title_reg = re.compile(r"https:\/\/.*?\.wizards\.com.*?/([^\/]*?)$")
 
             try:
-               link_hrefs = "\n".join([f"[{re.search(pdf_title_reg, l).group(1)}]({l})" for l in article['pdf_links']])
+               link_hrefs = "\n".join([f"PDF Link: [{re.search(pdf_title_reg, l).group(1)}]({l})" for l in article['pdf_links']])
             except IndexError:
                link_hrefs = ""
 
@@ -193,16 +193,16 @@ class Output(aurflux.FluxCog):
                   logger.success(f"Sending message in news channel:")
                   logger.success(embed.to_dict())
                   await news_channel.send(
+                     content=(f'<@&{r}> ' if (r := await self.cfg_get(gcfg, [article["type"], "role"])) else None),
                      embed=embed,
-
                   )
-                  await news_channel.send((f'<@&{r}> ' if (r := await self.cfg_get(gcfg, [article["type"], "role"])) else None) + (f'Head to <#{await self.cfg_get(gcfg, [article["type"], "discuss_channel"])}> to discuss\nIf you\'d like to be notified of future playtest content and related surveys, head to <#416449297886740490> and type `?rank UA`'))
+                  await news_channel.send((f'Head to <#{await self.cfg_get(gcfg, [article["type"], "discuss_channel"])}> to discuss\nIf you\'d like to be notified of future playtest content and related surveys, head to <#416449297886740490> and type `?rank UA`'))
 
                   # Discuss
 
                   discuss_channel: discord.TextChannel = await gctx.find_in_guild("channel", str(await self.cfg_get(gcfg, [article["type"], "discuss_channel"])))
                   discuss_message = None
-                  article_pdf_links = "\n".join(article['pdf_links'])
+                  # article_pdf_links = "\n" + "\n".join(article['pdf_links'])
 
                   try:
                      if ((discuss_message_old_id := int(await self.cfg_get(gcfg, [article["type"], "discuss_message_old"]) or 0)) and
