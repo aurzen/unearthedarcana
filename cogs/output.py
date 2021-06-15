@@ -193,10 +193,10 @@ class Output(aurflux.FluxCog):
                   logger.success(f"Sending message in news channel:")
                   logger.success(embed.to_dict())
                   await news_channel.send(
-                     content=(f'<@&{r}> ' if (r := await self.cfg_get(gcfg, [article["type"], "role"])) else None),
+                     content=(f'<@&{r}> ' if (r := await self.cfg_get(gcfg, [article["type"], "role"])) else None) + f'Head to <#{await self.cfg_get(gcfg, [article["type"], "discuss_channel"])}> to discuss\n',
                      embed=embed,
                   )
-                  await news_channel.send((f'Head to <#{await self.cfg_get(gcfg, [article["type"], "discuss_channel"])}> to discuss\nIf you\'d like to be notified of future playtest content and related surveys, head to <#416449297886740490> and type `?rank UA`'))
+                  await news_channel.send((f'If you\'d like to be notified of future playtest content and related surveys, head to <#416449297886740490> and type `?rank UA`'))
 
                   # Discuss
 
