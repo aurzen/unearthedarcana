@@ -30,4 +30,6 @@ class UABot(aurcore.AurCore):
 
 uabot = UABot()
 uabot.flux.register_cog(cogs.Output)
+uabot.flux.register_cog(cogs.LFGMirror)
+
 aurcore.aiorun(uabot.startup(token=TOKENS.UABOT), uabot.shutdown())

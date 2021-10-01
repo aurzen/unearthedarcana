@@ -8,6 +8,7 @@ import aiohttp
 import aurcore
 import aurflux
 import bs4
+import functools, itertools
 from aurflux.command import Response
 import discord
 import pendulum
@@ -24,7 +25,7 @@ ARTICLE_FEEDS = {
 ARTICLE_SEP = "\n⸱\n"
 MESSAGE_LENGTH_THRES = 1900
 
-
+import traceback
 class ArticleInfo(ty.TypedDict):
    title: str
    category: str
@@ -62,7 +63,7 @@ class ArticleScraper:
             assert resp.status == 200
             subpage_text = await resp.text()
             page = bs4.BeautifulSoup(subpage_text, features="html.parser")
-            summary = page.find("div",class_="main-content article").findChild("p", recursive=False).text
+            summary = page.find("div", class_="main-content article").findChild("p", recursive=False).text
 
             pdf_links = list(set(re.findall("https:\/\/media\.wizards\.com.*?\.pdf", subpage_text)))
 
@@ -143,7 +144,8 @@ class Output(aurflux.FluxCog):
          dummy = pendulum.now().format("MM/DD/YYYY")
          await self.router.submit(
             aurcore.Event("scraper:article",
-                          ArticleInfo(title=f"Title {dummy}", category=f"Category {dummy}", summary=f"Summary {dummy}", link=f"http://google.com", pdf_links='https://media.wizards.com/2021/dnd/downloads/TEST.pdf',
+                          ArticleInfo(title=f"Title {dummy}", category=f"Category {dummy}", summary=f"Summary {dummy}", link=f"http://google.com",
+                                      pdf_links='https://media.wizards.com/2021/dnd/downloads/TEST.pdf',
                                       type=type_))
          )
          return Response()
@@ -160,80 +162,105 @@ class Output(aurflux.FluxCog):
 
             dt = pendulum.from_format(article_date.group(0), "MM/DD/YYYY")
 
-            pdf_title_reg = re.compile(r"https:\/\/.*?\.wizards\.com.*?/([^\/]*?)$")
+            pdf_title_reg = re.compile(r"https:\/\/.*?\.wizards\.com.*?/([^/]*?)$")
 
             try:
                link_hrefs = "\n".join([f"PDF Link: [{re.search(pdf_title_reg, l).group(1)}]({l})" for l in article['pdf_links']])
-            except IndexError:
+            except (IndexError, AttributeError):
                link_hrefs = ""
 
+            article_type_prefix = {
+               "ua" : '🔥  New UA: ',
+               "sac": "Sage Advice Compendium"
+            }
+
+            article_type_color = {
+               "ua" : discord.Color(0xD41E3C),
+               "sac": discord.Color(0xFFFFFF)
+            }
+
             embed = discord.Embed(
-               title=f"{'📋  New ' if 'survey' in article['title'].lower() else '🔥  New UA: '}{article['title']}",
+               title=f"{'📋  New ' if 'survey' in article['title'].lower() else article_type_prefix[article['type']]}{article['title']}",
                description=article['summary'] + f"\n\n[{article['link']}]({article['link']})\n{link_hrefs}",
-               color=discord.Color(0x818689) if article['title'].startswith("Survey") else discord.Color(0xD41E3C)
+               color=discord.Color(0x818689) if article['title'].startswith("Survey") else article_type_color[article['type']]
             )
 
             embed.timestamp = pendulum.now()
 
-
             for guild in self.flux.guilds:
-               gctx = aurflux.context.ManualGuildCtx(flux=self.flux, guild=guild)
-               gcfg = self.flux.CONFIG.of(gctx)
+               try:
+                  gctx = aurflux.context.ManualGuildCtx(flux=self.flux, guild=guild)
+                  gcfg = self.flux.CONFIG.of(gctx)
 
-               if not (last_post := await self.cfg_get(gcfg, [article["type"], "last_post"])) or pendulum.parse(last_post) < dt:
+                  if not (last_post := await self.cfg_get(gcfg, [article["type"], "last_post"])) or pendulum.parse(last_post) < dt:
 
-                  news_channel_raw = await self.cfg_get(gcfg, [article["type"], "news_channel"])
-                  if not news_channel_raw:
-                     continue
-                  # News - Announcements
-                  news_channel: discord.TextChannel = await gctx.find_in_guild(
-                     "channel",
-                     news_channel_raw
-                  )
-                  logger.success(f"Sending message in news channel:")
-                  logger.success(embed.to_dict())
-                  await news_channel.send(
-                     content=(f'<@&{r}> ' if (r := await self.cfg_get(gcfg, [article["type"], "role"])) else None) + f'Head to <#{await self.cfg_get(gcfg, [article["type"], "discuss_channel"])}> to discuss\n',
-                     embed=embed,
-                  )
-                  await news_channel.send((f'If you\'d like to be notified of future playtest content and related surveys, head to <#416449297886740490> and type `?rank UA`'))
+                     news_channel_raw = await self.cfg_get(gcfg, [article["type"], "news_channel"])
+                     if not news_channel_raw:
+                        continue
+                     # News - Announcements
 
-                  # Discuss
+                     print(news_channel_raw)
 
-                  discuss_channel: discord.TextChannel = await gctx.find_in_guild("channel", str(await self.cfg_get(gcfg, [article["type"], "discuss_channel"])))
-                  discuss_message = None
-                  # article_pdf_links = "\n" + "\n".join(article['pdf_links'])
+                     news_channel: discord.TextChannel = await gctx.find_in_guild(
+                        "channel",
+                        news_channel_raw
+                     )
 
-                  try:
-                     if ((discuss_message_old_id := int(await self.cfg_get(gcfg, [article["type"], "discuss_message_old"]) or 0)) and
-                           (discuss_message_old := await discuss_channel.fetch_message(discuss_message_old_id))
-                     ):
-                        print(f"Found old id: {discuss_message_old_id}")
-                        await discuss_message_old.unpin(reason=f"Automatic unpin for updated {article['type']}")
-                  except discord.errors.NotFound:
-                     pass
-                  try:
-                     if ((discuss_message_curr_id := int(await self.cfg_get(gcfg, [article["type"], "discuss_message_current"]) or 0)) and
-                           (discuss_message_curr := await discuss_channel.fetch_message(discuss_message_curr_id))
-                     ):
-                        curr_embed = discuss_message_curr.embeds[0]
-                        if curr_embed.title.startswith("🔥  New"):
-                           curr_embed.title = "🐢 Old" + curr_embed.title.removeprefix("🔥  New")
-                           curr_embed.color = discord.Color(0x6E8A3D)
-                           await discuss_message_curr.edit(embed=curr_embed)
 
-                  except discord.errors.NotFound:
-                     pass
 
-                  # logger.success(f"Sending message in discuss channel:")
-                  # logger.success(content)
-                  if discuss_message:
-                     await discuss_message.unpin(reason=f"Automatic unpin for updated {article['type']}")
+                     logger.success(f"Sending message in news channel:")
+                     logger.success(embed.to_dict())
+                     await news_channel.send(
+                        content=('New ' +
+                                 (f'<@&{r}> ' if ((r := await self.cfg_get(gcfg, [article["type"], "role"])) and article['type'] == 'ua') else '') +
+                                 (' survey' if 'survey' in article['title'].lower() else '') +
+                                 ('Sage Advice Compendium' if article['type'] == 'sac' else '') +
+                                 (' just dropped. ' if article['type'] == 'ua' else '') +
+                                 (' was just published. ' if article['type'] == 'sac' else '') +
+                                 f'Head to <#{await self.cfg_get(gcfg, [article["type"], "discuss_channel"])}> to discuss\n'),
+                        embed=embed,
+                     )
+                     await news_channel.send((f'If you\'d like to be notified of future playtest content and related surveys, head to <#416449297886740490> and type `?rank UA`'))
 
-                  m: discord.Message = await discuss_channel.send(embed=embed)
+                     # Discuss
 
-                  await m.pin(reason=f"Automatic pin for updated {article['type']}")
+                     discuss_channel: discord.TextChannel = await gctx.find_in_guild("channel", str(await self.cfg_get(gcfg, [article["type"], "discuss_channel"])))
+                     discuss_message = None
+                     # article_pdf_links = "\n" + "\n".join(article['pdf_links'])
+                     if article["type"] == "ua":
+                        try:
+                           if ((discuss_message_old_id := int(await self.cfg_get(gcfg, ["ua", "discuss_message_old"]) or 0)) and
+                                 (discuss_message_old := await discuss_channel.fetch_message(discuss_message_old_id))
+                           ):
+                              print(f"Found old id: {discuss_message_old_id}")
+                              await discuss_message_old.unpin(reason=f"Automatic unpin for updated {article['type']}")
+                        except discord.errors.NotFound:
+                           pass
+                        try:
+                           if ((discuss_message_curr_id := int(await self.cfg_get(gcfg, ["ua", "discuss_message_current"]) or 0)) and
+                                 (discuss_message_curr := await discuss_channel.fetch_message(discuss_message_curr_id))
+                           ):
+                              curr_embed = discuss_message_curr.embeds[0]
+                              if curr_embed.title.startswith("🔥  New"):
+                                 curr_embed.title = "🐢 Old" + curr_embed.title.removeprefix("🔥  New")
+                                 curr_embed.color = discord.Color(0x6E8A3D)
+                                 await discuss_message_curr.edit(embed=curr_embed)
 
-                  await self.cfg_set(gctx, [article["type"], "discuss_message_old"], discuss_message_curr_id or None)
-                  await self.cfg_set(gctx, [article["type"], "discuss_message_current"], m.id)
-                  await self.cfg_set(gctx, [article["type"], "last_post"], dt.isoformat())
+                        except discord.errors.NotFound:
+                           pass
+
+
+                        await self.cfg_set(gctx, ["ua", "discuss_message_old"], discuss_message_curr_id or None)
+                        await self.cfg_set(gctx, ["ua", "discuss_message_current"], m.id)
+                     # logger.success(f"Sending message in discuss channel:")
+                     # logger.success(content)
+
+
+                     m: discord.Message = await discuss_channel.send(embed=embed)
+
+                     await m.pin(reason=f"Automatic pin for updated {article['type']}")
+
+
+                     await self.cfg_set(gctx, [article["type"], "last_post"], dt.isoformat())
+               except:
+                  logger.error(traceback.format_exc())
